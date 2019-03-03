@@ -11,5 +11,6 @@ public class Photo {
     Character orientation;
     Integer numberOfTags;
     List<String> tags = new ArrayList<>();
+    List<Integer> tagIndexes = new ArrayList<>();
     Integer interestScore;
 }

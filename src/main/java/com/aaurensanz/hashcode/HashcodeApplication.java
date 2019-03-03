@@ -7,7 +7,6 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import java.io.*;
 import java.util.*;
 
-import static java.util.stream.Collectors.groupingBy;
 import static java.util.stream.Collectors.toList;
 
 @SpringBootApplication
@@ -22,19 +21,24 @@ public class HashcodeApplication {
     public static void main(String[] args) {
         SpringApplication.run(HashcodeApplication.class, args);
         try {
-
+            Date initDate = new Date();
+            System.out.println(initDate);
             int totalScore = 0;
             for (String file : FILE) {
                 List<Photo> photoList = readPhotos(file);
                 photoList = groupVerticalPhotos(photoList);
-                HashMap<String, Integer> tagMap = getTagMap(photoList);
-                setInterestScore(photoList, tagMap);
+                HashMap<String, Integer> tagMapOcurrences = getTagMapOcurrences(photoList);
+                HashMap<String, Integer> tagMapIndex = getTagMapIndex(photoList);
+                setInterestScore(photoList, tagMapOcurrences, tagMapIndex);
 
                 photoList = runSolution(photoList);
                 totalScore += writePhotos(photoList, file);
             }
 
             System.out.println("Total Score: " + totalScore);
+            Date endDate = new Date();
+            System.out.println(endDate);
+            System.out.println((endDate.getTime() - initDate.getTime()) / 1000 + " seconds elapsed");
 
         } catch (IOException e) {
             e.printStackTrace();
@@ -56,15 +60,41 @@ public class HashcodeApplication {
         }
 
         verticalPhotos = verticalPhotos.stream().sorted(Comparator.comparing(Photo::getNumberOfTags)).collect(toList());
+        List<Photo> auxVerticalPhotos = new ArrayList<>();
+
+        for (int i = 0; i < verticalPhotos.size() / 2; i++) {
+            auxVerticalPhotos.add(verticalPhotos.get(i));
+            auxVerticalPhotos.add(verticalPhotos.get(verticalPhotos.size() - i - 1));
+        }
+        verticalPhotos = auxVerticalPhotos;
+
+        int WINDOW_SIZE = 25;
+
+        Photo auxPhoto;
+
+        for (int i = 0; i < verticalPhotos.size() - 1; i++) {
+
+            int numberOftags;
+
+            int currentNumberOfTags = mergeTags(verticalPhotos.get(i), verticalPhotos.get(i + 1)).size();
+            int limit = Math.min(verticalPhotos.size(), WINDOW_SIZE + i);
+
+            for (int j = i + 2; j < limit; j++) {
+                numberOftags = mergeTags(verticalPhotos.get(i), verticalPhotos.get(j)).size();
+                if (numberOftags > currentNumberOfTags) {
+                    auxPhoto = verticalPhotos.get(i + 1);
+                    verticalPhotos.set(i + 1, verticalPhotos.get(j));
+                    verticalPhotos.set(j, auxPhoto);
+                    currentNumberOfTags = numberOftags;
+                }
+            }
+        }
+
         for (int i = 0; i < verticalPhotos.size() - 1; i++) {
 
             auxVerticalPhoto = new Photo();
             auxVerticalPhoto.setId(verticalPhotos.get(i).getId() + " " + verticalPhotos.get(i + 1).getId());
-
-            Set<String> tagSet = new LinkedHashSet<>(verticalPhotos.get(i).getTags());
-            tagSet.addAll(verticalPhotos.get(i + 1).getTags());
-            auxVerticalPhoto.setTags(new ArrayList<>(tagSet));
-
+            auxVerticalPhoto.setTags(mergeTags(verticalPhotos.get(i), verticalPhotos.get(i + 1)));
             auxVerticalPhoto.setNumberOfTags(auxVerticalPhoto.getTags().size());
 
             groupedPhotos.add(auxVerticalPhoto);
@@ -74,7 +104,27 @@ public class HashcodeApplication {
         return groupedPhotos;
     }
 
-    private static HashMap<String, Integer> getTagMap(List<Photo> photoList) {
+    private static List<String> mergeTags(Photo photo1, Photo photo2) {
+        Set<String> tagSet = new LinkedHashSet<>(photo1.getTags());
+        tagSet.addAll(photo2.getTags());
+        return new ArrayList<>(tagSet);
+    }
+
+    private static HashMap<String, Integer> getTagMapIndex(List<Photo> photoList) {
+        HashMap<String, Integer> tagMap = new HashMap<>();
+        int count = 0;
+
+        for (Photo photo : photoList) {
+            for (String tag : photo.getTags()) {
+                if (tagMap.get(tag) == null) {
+                    tagMap.put(tag, count++);
+                }
+            }
+        }
+        return tagMap;
+    }
+
+    private static HashMap<String, Integer> getTagMapOcurrences(List<Photo> photoList) {
         HashMap<String, Integer> tagMap = new HashMap<>();
 
         for (Photo photo : photoList) {
@@ -85,14 +135,18 @@ public class HashcodeApplication {
         return tagMap;
     }
 
-    private static void setInterestScore(List<Photo> photoList, HashMap<String, Integer> tagMap) {
+    private static void setInterestScore(List<Photo> photoList, HashMap<String, Integer> tagMapOcurrences, HashMap<String, Integer> tagMapIndexes) {
+        List<Integer> tagIndexes;
         int interestScore;
         for (Photo photo : photoList) {
             interestScore = 0;
+            tagIndexes = new ArrayList<>();
             for (String tag : photo.getTags()) {
-                interestScore += tagMap.get(tag);
+                interestScore += tagMapOcurrences.get(tag);
+                tagIndexes.add(tagMapIndexes.get(tag));
             }
             photo.setInterestScore(interestScore);
+            photo.setTagIndexes(tagIndexes);
         }
     }
 
@@ -151,55 +205,64 @@ public class HashcodeApplication {
     private static List<Photo> runSolution(List<Photo> photoList) {
 
         List<Photo> finalPhotoList = new ArrayList<>();
-//        photoList.sort(Comparator.comparing(Photo::getInterestScore).reversed());
+        int WINDOW_SIZE = Math.max(photoList.size() / 1000, 1);
+//        int WINDOW_SIZE = 10;
+        photoList.sort(Comparator.comparing(Photo::getInterestScore).reversed());
 
-        Map<Integer, List<Photo>> photoMapByTagNumber = photoList.stream().collect(groupingBy(Photo::getNumberOfTags));
+        List<Photo> orderedPhotoList = photoList;
 
-        for (Map.Entry<Integer, List<Photo>> entry : photoMapByTagNumber.entrySet()) {
 
-            List<Photo> orderedPhotoList = entry.getValue().stream().sorted(Comparator.comparing(Photo::getInterestScore)).collect(toList());
+//        Map<Integer, List<Photo>> photoMapByTagNumber = photoList.stream().collect(groupingBy(Photo::getNumberOfTags));
+
+//        for (Map.Entry<Integer, List<Photo>> entry : photoMapByTagNumber.entrySet()) {
+
+//            List<Photo> orderedPhotoList = entry.getValue().stream().sorted(Comparator.comparing(Photo::getInterestScore)).collect(toList());
 //            orderedPhotoList.sort(Comparator.comparing(Photo::getInterestScore).reversed());
 
-//            List<Photo> orderedPhotoList = entry.getValue();
+//        List<Photo> photoListAux = new ArrayList<>();
+////
+//        int photoFragments = Math.min(orderedPhotoList.size(), 2);
+//
+////        System.out.println("Photo fragments: " + photoFragments);
+//
+//        for (int i = 0; i < orderedPhotoList.size() / photoFragments; i++) {
+//            photoListAux.add(orderedPhotoList.get(i));
+//            photoListAux.add(orderedPhotoList.get(i + orderedPhotoList.size() - i - 1));
+//        }
+//
+//        orderedPhotoList = photoListAux;
 
-//            System.out.println("Number of tags: " + entry.getKey() + ", Number of photos: " + entry.getValue().size() + ", Number of groups by tag number: " + photoMapByTagNumber.size());
-            Photo auxPhoto;
+        Photo auxPhoto;
 
-            for (int i = 0; i < orderedPhotoList.size() - 1; i++) {
-                Integer currentScore = getScore(orderedPhotoList.get(i), orderedPhotoList.get(i + 1));
+        for (int i = 0; i < orderedPhotoList.size() - 1; i++) {
+            Integer currentScore = getScore(orderedPhotoList.get(i), orderedPhotoList.get(i + 1));
+            Integer score;
 
-                for (int j = 2; j < orderedPhotoList.size() - 100; j++) {
-                    j += 100;
-                    Integer score = getScore(orderedPhotoList.get(i), orderedPhotoList.get(j));
-                    if (score > currentScore) {
-                        auxPhoto = orderedPhotoList.get(i + 1);
-                        orderedPhotoList.set(i + 1, orderedPhotoList.get(j));
-                        orderedPhotoList.set(j, auxPhoto);
-                    }
+            int limit = Math.min(orderedPhotoList.size(), WINDOW_SIZE + i);
+            for (int j = i + 2; j < limit; j++) {
+                score = getScore(orderedPhotoList.get(i), orderedPhotoList.get(j));
+                if (score > currentScore) {
+                    auxPhoto = orderedPhotoList.get(i + 1);
+                    orderedPhotoList.set(i + 1, orderedPhotoList.get(j));
+                    orderedPhotoList.set(j, auxPhoto);
+
+                    currentScore = score;
                 }
             }
-
-            finalPhotoList.addAll(orderedPhotoList);
         }
+
+        finalPhotoList.addAll(orderedPhotoList);
 
         return finalPhotoList;
-    }
-
-    private static Integer getTotalScore(List<Photo> photoList) {
-        Integer score = 0;
-        for (int i = 1; i < photoList.size(); i++) {
-            score += getScore(photoList.get(i - 1), photoList.get(i));
-        }
-        return score;
     }
 
     private static Integer getScore(Photo photo1, Photo photo2) {
 
         Integer intersection = 0;
         Integer inFirst = 0;
-        Integer inSecond = photo2.getTags().size();
-        for (String tag : photo1.getTags()) {
-            if (photo2.getTags().indexOf(tag) > -1) {
+        Integer inSecond = photo2.getTagIndexes().size();
+        for (Integer tag : photo1.getTagIndexes()) {
+            if (photo2.getTagIndexes().indexOf(tag) > -1) {
                 intersection++;
                 inSecond--;
             } else {
