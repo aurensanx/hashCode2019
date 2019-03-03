@@ -158,7 +158,7 @@ public class HashcodeApplication {
         for (Map.Entry<Integer, List<Photo>> entry : photoMapByTagNumber.entrySet()) {
 
             List<Photo> orderedPhotoList = entry.getValue().stream().sorted(Comparator.comparing(Photo::getInterestScore)).collect(toList());
-            orderedPhotoList.sort(Comparator.comparing(Photo::getInterestScore).reversed());
+//            orderedPhotoList.sort(Comparator.comparing(Photo::getInterestScore).reversed());
 
 //            List<Photo> orderedPhotoList = entry.getValue();
 
@@ -182,7 +182,7 @@ public class HashcodeApplication {
             finalPhotoList.addAll(orderedPhotoList);
         }
 
-        return photoList;
+        return finalPhotoList;
     }
 
     private static Integer getTotalScore(List<Photo> photoList) {
